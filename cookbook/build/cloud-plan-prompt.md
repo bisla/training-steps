@@ -41,4 +41,24 @@ WHAT I WANT FROM YOU
 - Pin concrete, defensible numbers for "how much data for a ~4B model" and replay ratios.
 - Output the final plan as an ordered, executable checklist with per-chapter "must cover" bullets.
 Keep all decisions above fixed; refine HOW, not WHETHER.
+
+ADDITIONAL REQUIREMENTS (fold in, do not drop)
+7. PROGRESSIVE ON-RAMP is the spine of the book: order it so a reader gets a WORKING fine-tuned
+   model FAST and CHEAP first, then layers sophistication. Add an early Quickstart that fine-tunes
+   Gemma-3-4B or Qwen3-4B on synthetic data end-to-end for UNDER $20–30 total (state the exact
+   cost + time + GPU, e.g. one cloud A100/L4 hour or free Colab). Each later part is an explicit
+   "now make it better" step: better data -> evaluation -> DPO -> GRPO/PPO -> continuous learning.
+   Every stage names its $ budget and what it buys.
+8. SYNTHETIC DATA: make the synthetic-data chapter (currently Ch13) deep and practical — exact
+   generation pipeline, teacher-model prompts, diversity/personas, self-verification/judge filtering,
+   dedup, and CONCRETE VOLUME guidance (how many rows/tokens for a first cheap run vs a good model
+   vs each continual-update cycle; rows-vs-tokens; diminishing returns). Tie its numbers to the
+   how-much-data chapter in Part 8 so they agree.
+9. HOSTING & SERVING (inference): make the serving chapter (currently Ch22) a practical, cheap-first
+   guide — local Ollama (GGUF) for $0, then vLLM OpenAI-compatible server for throughput, then a
+   managed/endpoint option; include a tiny client calling the served model with the SAME system
+   prompt used in training, plus latency/cost notes.
+10. TONE BAR everywhere: super simple to follow, "dumbed down but technically correct", builds
+    intuition and context for a zero-ML reader who still ends up understanding WHY. Practical steps
+    over theory. The AUTHORING_CHARTER acceptance bar must encode this and the progressive-cost spine.
 ```
