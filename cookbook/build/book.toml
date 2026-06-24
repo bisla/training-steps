@@ -1,0 +1,9 @@
+[book]
+title = "The Engram Cookbook"
+authors = ["Engram Cookbook"]
+language = "en"
+src = ".."
+
+[output.html]
+git-repository-url = ""
+edit-url-template = ""
