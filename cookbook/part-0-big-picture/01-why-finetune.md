@@ -102,7 +102,16 @@ A sample output looks like this:
 ]
 ```
 
-This is exactly what products like [mem0](https://mem0.ai) do under the hood: they listen to conversations and extract structured facts so the AI can remember things about you over time. The Engram idea — models that learn from your context rather than just retrieving it — starts right here.
+This is exactly what products like [mem0](https://mem0.ai) do under the hood: they listen to conversations and extract structured facts so the AI can remember things about you over time. The bigger idea — models that learn from your context rather than just retrieving it — starts right here.
+
+Memory extraction is the running example we'll build, end to end, throughout the book. But it is just *one* shape of a much bigger pattern called **domain fine-tuning** — teaching a small model a skill specific to your world. Everything you learn here transfers directly to tasks like:
+
+- **A company or org "brain"** — read meeting and Slack transcripts and emit structured records of decisions, owners, and commitments, so the org never forgets who agreed to what.
+- **A personal recall or "dream" feature** — turn one person's notes and chats into durable, queryable memories for a personal assistant.
+- **Structured extraction from messy documents** — pull clean fields out of clinical notes, contracts, support tickets, or research papers.
+- **Any reliable structured-output task** — anywhere prompting a big general model is too inconsistent, too slow, or too expensive to run at scale.
+
+These all share the same spine: messy input goes in, clean structured output comes out, the same way every time. We picked memory extraction because it is concrete, useful, and exercises every part of the pipeline — but as you read, keep your own version of the task in the back of your mind. The technique is what's portable.
 
 Now ask yourself: could you do this with prompting alone?
 
@@ -126,7 +135,14 @@ Small matters. A 1–2 billion parameter model fine-tuned for your task often be
 
 ## A map of the journey ahead
 
-Here is what this book covers, part by part. We will come back to this map often.
+The path through this book follows a deliberate shape: first get a **working model** in your hands, then **understand** why it worked, then **do it properly**, then **align** the model so it prefers better answers, and finally turn it into a **continual system** that keeps improving. Each stage stands on the one before it.
+
+Before the deep dive, though, there's a shortcut worth taking.
+
+**Chapter 0 — The Speedrun**
+If you'd rather see the whole thing work *today* than read about it first, start at **Chapter 0 ("The Speedrun")**. It walks you from nothing to a real, working fine-tuned memory extractor in a single afternoon, for under $30 of rented GPU and teacher-API time — no theory, just the commands. You won't fully understand every step yet, and that's the point: get the win, feel the loop, then come back here for the *why*. Everything after Chapter 0 exists to make that afternoon repeatable, reliable, and yours.
+
+Here is what the rest of the book covers, part by part. We will come back to this map often.
 
 **Part 0 — Big Picture (Chapters 1–3)**
 We start where you are right now: understanding *why* this approach exists and where it fits in the landscape. Chapter 2 ("Mental Models: What a Model Actually Is") builds the mental model you need for everything else. Chapter 3 ("Prompting vs RAG vs Fine-Tuning vs Full Training") gives you the decision framework in full.
@@ -147,7 +163,13 @@ We write and run the actual fine-tuning script using Unsloth. We cover the hyper
 A model that compiles is not the same as a model that works. We write an evaluation harness for memory extraction, walk through a debugging playbook for when results are bad, and show the iteration loop that takes you from mediocre to good.
 
 **Part 6 — Deploy and Beyond (Chapters 21–23)**
-We export the trained model, serve it with a local API, and integrate it into a simple Python app. The final chapter points toward the Engram vision: continual learning, where the model keeps improving as it sees more data.
+We export the trained model, serve it with a local API, and integrate it into a simple Python app. By here you have a model that *works* — trained by imitation, copying the examples you showed it.
+
+**Part 7 — Preference & RL (Chapters 24–29)**
+Imitation only teaches the model to copy good answers; it never teaches it to *prefer* one answer over another. This part closes that gap. We show the model pairs of outputs — this one is better, this one is worse — and train it to lean toward the better one. You'll meet reward functions and reward models (how to score an answer automatically), DPO (the simplest, most practical way to train on preferences), and GRPO (the reinforcement-learning centerpiece that lets the model improve from its own attempts). PPO is covered conceptually, so you understand the idea without fighting the machinery. This is how you go from "it does the task" to "it does the task *well*."
+
+**Part 8 — Continuous Learning as a System (Chapters 30–34)**
+A model trained once starts going stale the moment your world changes. This part turns the whole thing into a living system that keeps getting better over time. We cover the continual-learning loop architecture (collect → curate → retrain → evaluate → ship), how to curate new data without poisoning what works, how much to retrain and how often, how to avoid *catastrophic forgetting* (where new training makes the model lose old skills), and the production operations that keep it all running safely.
 
 **Appendices**
 A full glossary of every term used, a command cheat-sheet, a troubleshooting guide for common errors, and a cost/time reference with a go-live checklist.
@@ -252,7 +274,8 @@ The number-one reason fine-tuned models fail is bad training data. A model train
 - Prompting is fast but limited by context window size and inconsistent behavior. RAG is great for large, changing knowledge bases. Fine-tuning is best for teaching consistent *behavior* and *output format*.
 - Memory extraction — pulling structured JSON facts from raw conversations — is a behavior problem, not a retrieval problem. Fine-tuning is the right tool.
 - A small fine-tuned model (1–2B parameters) can outperform a large general model on a narrow task, while being faster and cheaper to serve.
-- This book walks you from zero ML knowledge to a deployed, fine-tuned memory-extraction model, using Qwen3 or Gemma 3 with the Unsloth ecosystem.
+- Memory extraction is our running example, but domain fine-tuning is the real subject — the same technique powers org "brains," personal recall, document extraction, and any reliable structured-output task.
+- This book walks you from zero ML knowledge to a *working* model (the speedrun), then to understanding it, doing it properly, aligning it with preference and RL, and finally running it as a continual system that keeps improving — using Qwen3 or Gemma 3 with the Unsloth ecosystem.
 
 ## Next
 

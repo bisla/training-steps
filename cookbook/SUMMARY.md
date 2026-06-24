@@ -2,6 +2,10 @@
 
 - [Introduction](README.md)
 
+# Quickstart
+
+- [Ch0 - The Speedrun: A Working Fine-Tune This Afternoon for Under $30](quickstart/00-speedrun.md)
+
 # Part 0 — The Big Picture
 
 - [Ch1 - Why Teach a Model Your Own World](part-0-big-picture/01-why-finetune.md)
@@ -44,7 +48,24 @@
 
 - [Ch21 - Saving, Merging, and Exporting Your Model](part-6-deploy-beyond/21-saving-merging-exporting.md)
 - [Ch22 - Serving Your Model and Using It in an App](part-6-deploy-beyond/22-serving-and-integration.md)
-- [Ch23 - Toward Engram: Continual Learning and Scaling Up](part-6-deploy-beyond/23-toward-continual-learning.md)
+- [Ch23 - Continual Learning and Scaling Up](part-6-deploy-beyond/23-toward-continual-learning.md)
+
+# Part 7 — Preference & RL
+
+- [Ch24 - Beyond Imitation: Why Preference and RL](part-7-preference-rl/24-why-preference.md)
+- [Ch25 - Rewards: Functions and Reward Models](part-7-preference-rl/25-reward-modeling.md)
+- [Ch26 - DPO: Learning Directly From Preference Pairs](part-7-preference-rl/26-dpo.md)
+- [Ch27 - PPO and the Full RL Loop: Why We Don't Use It Here](part-7-preference-rl/27-ppo-why-not.md)
+- [Ch28 - GRPO: Practical RL With Reward Functions](part-7-preference-rl/28-grpo.md)
+- [Ch29 - Choosing Your Method: SFT vs DPO vs KTO/ORPO vs GRPO vs PPO](part-7-preference-rl/29-choosing-a-method.md)
+
+# Part 8 — Continuous Learning as a System
+
+- [Ch30 - The Continual Learning Loop as a System](part-8-continual-learning/30-the-loop-architecture.md)
+- [Ch31 - Selecting and Curating Data That Actually Helps](part-8-continual-learning/31-data-selection-curation.md)
+- [Ch32 - How Much Data, and How Often to Retrain](part-8-continual-learning/32-how-much-how-often.md)
+- [Ch33 - Catastrophic Forgetting Over Many Rounds](part-8-continual-learning/33-catastrophic-forgetting.md)
+- [Ch34 - Production Ops: Monitoring, Versioning, Gating, and Rollback](part-8-continual-learning/34-production-ops.md)
 
 # Appendices
 

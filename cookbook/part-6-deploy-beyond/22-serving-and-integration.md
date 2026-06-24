@@ -2,18 +2,19 @@
 
 You trained a model. You evaluated it in *Ch18 - Did It Actually Work? Evaluating Memory Extraction*. You debugged the rough edges in *Ch19 - When It Goes Wrong: A Debugging Playbook*. Now you want to actually use it.
 
-This chapter closes the loop. We will take the fine-tuned model you saved in *Ch21 - Saving, Merging, and Exporting Your Model* and get it answering real requests. There are three paths, each suited to a different situation. We will walk all three, then wire up a clean Python function — `extract_memories(text) -> list` — that you can drop into any application.
+This chapter closes the loop. We will take the fine-tuned model you saved in *Ch21 - Saving, Merging, and Exporting Your Model* and get it answering real requests. There are three core paths we walk in full — Ollama, vLLM, and in-process transformers — plus two production alternatives worth knowing about (Hugging Face TGI and a managed cloud endpoint). We will walk the three, survey the alternatives, and wire up a clean Python function — `extract_memories(text) -> list` — that you can drop into any application.
 
 ---
 
 ## What you'll learn
 
-- The three serving options and when to pick each one: Ollama (quick local test), vLLM (production-ready API), and in-process transformers (batch jobs)
+- The serving options and when to pick each one: Ollama (quick local test), vLLM (production-ready API), in-process transformers (batch jobs), plus two alternatives — Hugging Face TGI and a managed cloud endpoint
 - How to load your exported GGUF file with Ollama and call it with one `curl` command
 - How to spin up a vLLM server that speaks the OpenAI API format
 - How to run the model directly in Python without a server at all
-- How to write a `extract_memories()` client function that works against any of the three backends
-- How batching and latency trade-offs play out in practice
+- When TGI is a better production server than vLLM, and when paying for a managed endpoint beats running your own
+- How to write a `extract_memories()` client function that works against any OpenAI-compatible backend
+- How throughput, ops effort, and rough cost trade off across all the options
 
 ---
 
@@ -322,6 +323,46 @@ def run_inference(model, tokenizer, conversation_text: str) -> str:
 
 ---
 
+## Two more options worth knowing about
+
+The three paths above cover most situations. But two alternatives come up often enough that you should know they exist and when to reach for them. The good news: both speak the OpenAI API format, so the `extract_memories()` client you write later works against them unchanged — you only change the base URL.
+
+### Option 4: Hugging Face TGI — the other production server
+
+**When to use this:** You want production-grade serving like vLLM, but you are already living in the Hugging Face ecosystem (you push models to the Hub, you deploy on Hugging Face Inference Endpoints, or your ops team already runs TGI containers). TGI — Text Generation Inference — is Hugging Face's battle-tested serving stack. It ships as a Docker image, supports continuous batching and tensor parallelism much like vLLM, and exposes an OpenAI-compatible `/v1/chat/completions` endpoint.
+
+Think of vLLM and TGI as two competing espresso machines: both pull a great shot, the throughput is in the same ballpark, and which one you buy mostly comes down to which kitchen it fits into. vLLM tends to lead on raw throughput and is the more common open-source default; TGI tends to win on operational polish and Hub integration. For a single 7B model you will not notice a dramatic difference — pick the one your infrastructure already favors.
+
+```bash
+# Run TGI as a Docker container. It downloads the model and starts an
+# OpenAI-compatible server on port 8080.
+# Mount a local directory so TGI can read the merged HuggingFace model from Ch21.
+# (You can also pass a Hub repo id instead of a local path.)
+
+docker run --gpus all --shm-size 1g -p 8080:80 \
+  -v $PWD/models:/data \
+  ghcr.io/huggingface/text-generation-inference:latest \
+  --model-id /data/memory-extractor-merged \
+  --max-total-tokens 4096
+```
+
+Once it is up, the client code is identical to vLLM — just point `base_url` at `http://localhost:8080/v1`. TGI does not have a Modelfile concept either, so you pass the pinned system prompt in the `messages` list exactly as you do for vLLM. Tested against TGI 2.x.
+
+### Option 5: A managed cloud endpoint — least ops, pay per use
+
+**When to use this:** You do not want to manage a GPU at all. No CUDA drivers, no Docker, no `vllm serve` process to keep alive, no machine to patch. You upload (or point at) your model, and a provider runs it for you behind an HTTPS URL. This is the right call when your traffic is spiky, when you are a solo developer who would rather pay than operate, or when you want to ship before standing up real infrastructure.
+
+The landscape moves fast, but the categories are stable. **Serverless GPU hosts** (Modal, Replicate, RunPod Serverless, Baseten) spin a GPU up on demand, run your model, and spin it down — you pay per second, often only while a request is in flight. **Managed inference endpoints** (Hugging Face Inference Endpoints, or the major clouds' model-serving products) keep a dedicated instance warm behind a stable URL. Most expose an OpenAI-compatible API or a thin wrapper you can adapt in a few lines.
+
+The tradeoff is intuition-first simple: you trade money and a little control for almost zero operational burden. Two cost patterns to keep straight:
+
+- **Per-second serverless** bills only while a request runs. Cheap for spiky or low-volume traffic, but the first request after idle pays a **cold start** — the GPU and weights must load, which can add 10–60 seconds of latency. Fine for background jobs; rough for an interactive app unless you keep one instance warm.
+- **Always-on managed endpoint** bills by the hour whether or not traffic arrives — typically in the rough range of **$0.50–$2 per GPU-hour** for the kind of mid-range GPU (a 16–24 GB card) that comfortably serves a 7B model. Predictable and warm, but you pay for idle time.
+
+If you are running thousands of requests an hour, all day, a managed endpoint or your own vLLM box is cheaper per call. If you serve a few hundred requests in bursts, serverless usually wins. Either way, your application code does not change — it is still an OpenAI client pointed at a URL.
+
+---
+
 ## The client function: `extract_memories()`
 
 Now we tie everything together. The goal is one clean function that any part of your application can call, regardless of which backend is running underneath.
@@ -559,6 +600,16 @@ Here is a practical comparison of the three options. All numbers are rough ballp
 | **GPU requirement** | 8 GB VRAM (Q4) | 16–24 GB VRAM | 14–24 GB VRAM |
 | **Cloud cost (A10G)** | n/a | ~$0.0003 per call | ~$0.0001 per call |
 
+And here is the wider picture, including the two production alternatives, scored on the four things that actually drive the decision — when to reach for it, throughput, how much operations work it costs you, and rough money. Treat every number as an order-of-magnitude range, not a quote:
+
+| Option | When to use | Throughput | Ops effort | Rough cost |
+|---|---|---|---|---|
+| **Ollama** | Dev / single user / local test | Low (1 request at a time) | Almost none | Free on your laptop |
+| **vLLM** | Self-hosted production; the workhorse | High (10–50 concurrent) | Medium — you run the GPU box | ~$0.5–2/GPU-hr if rented |
+| **TGI** | Production inside the HF ecosystem | High (comparable to vLLM) | Medium — Docker + GPU box | ~$0.5–2/GPU-hr if rented |
+| **In-process** | One-off batch jobs, eval scripts | Low–medium (sequential) | Low — no server | ~$0.5–2/GPU-hr while running |
+| **Managed / serverless** | Least ops; spiky or low volume | Provider-scaled | Lowest — no machine to run | Per-second, or ~$0.5–2/GPU-hr always-on |
+
 A few practical notes:
 
 **Temperature matters for JSON.** Always use `temperature=0.1` or lower for this task. Higher temperatures make the model creative, which means it produces creative JSON — invalid JSON. `temperature=0` is theoretically the most deterministic but some inference backends implement it differently. `0.1` is a safe, consistent choice.
@@ -728,6 +779,14 @@ This is the pattern behind products like mem0. A conversation comes in. The fine
 
 ---
 
+## What this chapter deliberately does *not* cover
+
+Getting the model answering requests is one thing; running it as a dependable service is another. This chapter stops at "it serves correct output." The harder production questions — **monitoring** what the model does in the wild, **versioning** which model is live, doing **canary** or shadow deploys so a bad model only sees a sliver of traffic, and being able to **roll back** in seconds when something regresses — all live in *Ch34 - Production Ops*. Reach for that chapter the moment this model carries traffic you care about.
+
+And serving is not the end of the story. Once real conversations are flowing through the model, you are sitting on the most valuable training data you will ever get: examples from your actual users. Turning that stream into a model that keeps getting better — the continual-improvement loop — is the subject of **Part 8 - Continuous Learning**. This chapter hands you a model that works; Part 8 is how you keep it working as your world changes.
+
+---
+
 ## Common mistakes
 
 **Mistake: forgetting the system prompt at inference time.**
@@ -758,7 +817,7 @@ vLLM will return a `404 model not found` error if the names do not match. Keep `
 
 ## Recap
 
-- There are three serving options: Ollama (GGUF, local test, minimal setup), vLLM (HuggingFace format, OpenAI-compatible API, production throughput), and in-process transformers (batch jobs, no server needed).
+- There are three core serving options: Ollama (GGUF, local test, minimal setup), vLLM (HuggingFace format, OpenAI-compatible API, production throughput), and in-process transformers (batch jobs, no server needed). Two production alternatives round it out: Hugging Face TGI (a vLLM-class server that fits the HF ecosystem) and a managed/serverless endpoint (least ops, pay per use).
 - The system prompt from training must be used verbatim at inference time. Store it as a shared constant and import it; never rewrite it inline.
 - `extract_memories(text, client) -> list[dict]` is the one function the rest of your app needs. It abstracts away which backend is running.
 - For JSON-structured output, use `temperature=0.1` or lower. High temperature produces creatively broken JSON.
@@ -768,4 +827,4 @@ vLLM will return a `404 model not found` error if the names do not match. Keep `
 
 ## Next
 
-*Ch23 - Toward Engram: Continual Learning and Scaling Up* — now that the model is serving real traffic and accumulating real data, we look at how to keep improving it: collecting production feedback, building a continual fine-tuning loop, and the path toward models that genuinely internalize your users' world.
+*Ch23 - Continual Learning and Scaling Up* — now that the model is serving real traffic and accumulating real data, we look at how to keep improving it: collecting production feedback, building a continual fine-tuning loop, and the path toward models that genuinely internalize your users' world.

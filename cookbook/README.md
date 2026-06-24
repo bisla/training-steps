@@ -1,5 +1,5 @@
-# The Engram Cookbook
-### Fine-Tuning Small Language Models for Memory Extraction
+# The Domain Fine-Tuning Handbook
+### Fine-Tuning Small Language Models for Your Own Domain
 
 A practical, ground-up guide for Python developers with no prior machine learning background. By the end you will have fine-tuned a real model — Qwen or Gemma — to extract structured memory facts from natural conversation.
 
@@ -13,16 +13,36 @@ No math prerequisites. No GPU farm required. A single consumer GPU or a rented c
 
 ---
 
-## The running example: Engram
+## What domain fine-tuning is for
 
-Every chapter builds toward the same concrete system: **Engram**, a memory-extraction pipeline that reads a conversation and writes out structured facts — the kind of facts a personal AI assistant needs to remember between sessions.
+Domain fine-tuning means teaching a small, cheap model a skill that is specific to *your*
+world — something a big general-purpose model does inconsistently, slowly, or expensively.
+A few examples of what people build this way:
+
+- A **company "brain"** that pulls decisions, owners, and commitments out of meeting and chat transcripts.
+- A **personal recall feature** that turns someone's notes and conversations into durable, queryable memories.
+- A **domain extractor** that lifts structured fields out of clinical notes, contracts, or support tickets.
+- Any **reliable structured-output task** where prompting a large model just is not consistent enough at scale.
+
+## The running example: a memory extractor
+
+To keep things concrete, every chapter builds toward one runnable system: a **memory
+extractor** that reads a conversation and writes out structured, atomic facts — the kind a
+personal AI assistant needs to remember between sessions.
 
 ```
-Input:  "I just moved to Austin and I'm training for my first marathon."
-Output: {"location": "Austin", "goal": "run a marathon", "experience": "first marathon"}
+Input:  "Alex switched from Notion to Obsidian because Notion got too slow."
+Output: [{"text": "Alex switched from Notion to Obsidian.",
+          "type": "decision", "entities": ["Alex", "Notion", "Obsidian"]}]
 ```
 
-You will generate the training data, fine-tune the model, evaluate it, debug it, and ship it. Each part of the book advances that single goal.
+You will generate the training data, fine-tune the model, evaluate it, debug it, and ship it
+— and then go further: align it with preference and RL, and run it as a continually
+improving system. The memory extractor is the example; the technique is the point.
+
+> **In a hurry?** [Chapter 0 — The Speedrun](quickstart/00-speedrun.md) takes you end to end
+> — synthetic data, fine-tune, and serve — in an afternoon for under $30. The rest of the
+> book then explains *why* each step works and how to make it production-grade.
 
 ---
 
@@ -40,11 +60,17 @@ You will generate the training data, fine-tune the model, evaluate it, debug it,
 
 ## How to read this book
 
-Read Parts 0 and 1 straight through — they are short and load the mental models everything else depends on. Part 2 is setup; follow it on your own machine. Parts 3–6 are the hands-on core: do them in order, running the code as you go. The appendices are reference material; jump to them when you hit an error or need a term defined.
+If you just want a win, start with **Chapter 0 — The Speedrun**: it takes you end to end (synthetic data → fine-tune → serve) in an afternoon for under $30. Then read Parts 0 and 1 straight through — they are short and load the mental models everything else depends on. Part 2 is setup; follow it on your own machine. Parts 3–6 are the hands-on core: do them in order, running the code as you go. Part 7 (Preference & RL) and Part 8 (Continuous Learning as a System) are the advanced build-out — reach for them once a plain fine-tune is working and deployed. The appendices are reference material; jump to them when you hit an error or need a term defined.
 
 ---
 
 ## Table of Contents
+
+### Quickstart
+
+| | |
+|---|---|
+| [Chapter 0](quickstart/00-speedrun.md) | The Speedrun: A Working Fine-Tune This Afternoon for Under $30 |
 
 ### Part 0 — The Big Picture
 
@@ -102,7 +128,28 @@ Read Parts 0 and 1 straight through — they are short and load the mental model
 |---|---|
 | [Chapter 21](part-6-deploy-beyond/21-saving-merging-exporting.md) | Saving, Merging, and Exporting Your Model |
 | [Chapter 22](part-6-deploy-beyond/22-serving-and-integration.md) | Serving Your Model and Using It in an App |
-| [Chapter 23](part-6-deploy-beyond/23-toward-continual-learning.md) | Toward Engram: Continual Learning and Scaling Up |
+| [Chapter 23](part-6-deploy-beyond/23-toward-continual-learning.md) | Continual Learning and Scaling Up |
+
+### Part 7 — Preference & RL
+
+| | |
+|---|---|
+| [Chapter 24](part-7-preference-rl/24-why-preference.md) | Beyond Imitation: Why Preference and RL |
+| [Chapter 25](part-7-preference-rl/25-reward-modeling.md) | Rewards: Functions and Reward Models |
+| [Chapter 26](part-7-preference-rl/26-dpo.md) | DPO: Learning Directly From Preference Pairs |
+| [Chapter 27](part-7-preference-rl/27-ppo-why-not.md) | PPO and the Full RL Loop: Why We Don't Use It Here |
+| [Chapter 28](part-7-preference-rl/28-grpo.md) | GRPO: Practical RL With Reward Functions |
+| [Chapter 29](part-7-preference-rl/29-choosing-a-method.md) | Choosing Your Method: SFT vs DPO vs KTO/ORPO vs GRPO vs PPO |
+
+### Part 8 — Continuous Learning as a System
+
+| | |
+|---|---|
+| [Chapter 30](part-8-continual-learning/30-the-loop-architecture.md) | The Continual Learning Loop as a System |
+| [Chapter 31](part-8-continual-learning/31-data-selection-curation.md) | Selecting and Curating Data That Actually Helps |
+| [Chapter 32](part-8-continual-learning/32-how-much-how-often.md) | How Much Data, and How Often to Retrain |
+| [Chapter 33](part-8-continual-learning/33-catastrophic-forgetting.md) | Catastrophic Forgetting Over Many Rounds |
+| [Chapter 34](part-8-continual-learning/34-production-ops.md) | Production Ops: Monitoring, Versioning, Gating, and Rollback |
 
 ### Appendices
 

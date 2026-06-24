@@ -167,6 +167,31 @@ A QLoRA fine-tune on a 7B model (Qwen3-8B or Gemma 3 7B) is the sweet spot becau
 
 The numbers in the cost row are rough ballparks for a mid-2020s cloud setup — treat them as order-of-magnitude guidance, not quotes.
 
+> **In a hurry?** If you just want a working fine-tuned model this afternoon and want to understand the *why* later, jump to Ch0 - The Speedrun (`quickstart/00-speedrun.md`). It's the fast path; this chapter is the map.
+
+---
+
+## Two more axes: *how* you teach, and *how often*
+
+The flowchart above picks your *approach* — prompting, RAG, fine-tuning, full training. But once you've landed on fine-tuning, two more questions decide what your project actually looks like. They're worth meeting now because the back half of this book is organized around them.
+
+**Axis 1 — How do you teach the skill? (the post-training axis.)** Everything we've described so far is *imitation*: you show the model correct examples and it learns to copy them. That's **SFT** (supervised fine-tuning), and it's the workhorse of Parts 3–4. SFT works beautifully when you can *demonstrate* the right answer — and for memory extraction, you usually can: here is the conversation, here is the exact JSON you want back.
+
+But some qualities are easy to *recognize* and hard to *demonstrate*. Imagine two valid memory extractions of the same chat: both are correct JSON, but one splits facts more cleanly, phrases each memory more naturally, and skips the fluff. You can tell which you prefer at a glance — but you'd struggle to write a rule, or a single "gold" answer, that captures that preference. When the thing you want is a *judgment about quality* rather than a single demonstrable target, you move past imitation to **preference and RL methods**: you let the model produce several candidates and teach it to favor the better ones. That's the whole point of **Part 7 — Preference & RL** (Ch24 - Why Preference, Ch25 - Reward Modeling, Ch26 - DPO, Ch27 - PPO (and why not), Ch28 - GRPO, Ch29 - Choosing a Method). The rule of thumb: **SFT first to learn the format and the basic skill; preference/RL only when SFT plateaus and your remaining gains are about quality you can score but not write down.**
+
+**Axis 2 — How often do you retrain? (the continual-learning axis.)** The speedrun produces a *one-shot* fine-tune: train once, ship the adapter, done. That's the right starting point. But real domains drift — new conversation styles, new memory types, new edge cases your model fumbles in production. A *continually-retrained* system folds that fresh data back into training on a schedule, round after round, so the model keeps up. This sounds like "just retrain occasionally," but it has its own failure modes (the model forgetting old skills as it learns new ones, deciding *which* new data is worth training on, knowing how much and how often). That whole living-system view is **Part 8 — Continuous Learning** (Ch30 - Loop Architecture, Ch31 - Data Selection & Curation, Ch32 - How Much & How Often, Ch33 - Catastrophic Forgetting, Ch34 - Production Ops). Most projects start one-shot and graduate to a loop only once the model is in production and the data keeps coming.
+
+Folded into the same decision tooling, the two new axes look like this:
+
+| | One-shot SFT | SFT + preference/RL | Continually-retrained |
+|---|---|---|---|
+| **Optimizes for preference/quality** | No (imitates examples) | Yes (favors better candidates) | Either — depends on the per-round method |
+| **Retraining frequency / adapts over time** | Once, then frozen | Once (or a few passes), then frozen | Repeatedly, on a schedule |
+| **Reach for it when** | Format/skill is demonstrable | SFT plateaus on hard-to-demonstrate quality | The domain drifts and fresh data keeps arriving |
+| **Covered in** | Parts 3–4 | Part 7 (Ch24–29) | Part 8 (Ch30–34) |
+
+You don't pick one column and stay there. A typical arc moves left to right over a project's life: ship a one-shot SFT, add preference/RL when imitation stops paying off, and wrap the whole thing in a retraining loop once it's earning its keep in production.
+
 ---
 
 ## The one honest limit of fine-tuning

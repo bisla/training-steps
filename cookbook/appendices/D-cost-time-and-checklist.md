@@ -549,4 +549,4 @@ Your training loss goes down because the model memorized the training examples. 
 
 ## Next
 
-This is the end of the book — you now have everything you need to build, train, evaluate, and deploy a domain-specific fine-tune. For the path forward, see *Ch23 - Toward Engram: Continual Learning and Scaling Up*, which sketches how to close the loop: collecting production signal, running continual fine-tuning, and building toward models that genuinely internalize your users' world over time.
+This is the end of the book — you now have everything you need to build, train, evaluate, and deploy a domain-specific fine-tune. For the path forward, see *Ch23 - Continual Learning and Scaling Up*, which sketches how to close the loop: collecting production signal, running continual fine-tuning, and building toward models that genuinely internalize your users' world over time.

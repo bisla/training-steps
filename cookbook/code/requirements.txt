@@ -1,0 +1,27 @@
+# The Domain Fine-Tuning Handbook — pinned dependencies
+#
+# All code in the book is authored and tested against this frozen snapshot.
+# Pinning matters: the preference/RL APIs (DPO, GRPO, reward modeling) move fast,
+# and older tutorials use deprecated patterns. After a clean install, run
+# `pip freeze > code/requirements.lock.txt` to capture the exact resolved tree.
+#
+# Install (GPU box / Colab / RunPod / Vast.ai):
+#   pip install -r code/requirements.txt
+# Unsloth's install can vary by CUDA version — if the line below fails, follow
+# https://docs.unsloth.ai/get-started/installing-unsloth for your environment.
+
+# Core fine-tuning stack
+unsloth==2026.6.9
+trl==1.6.0
+transformers>=4.57          # version that ships with / is compatible with trl 1.6.0
+peft>=0.17
+datasets>=3.2
+accelerate>=1.3
+bitsandbytes>=0.45          # 4-bit (QLoRA) quantization
+
+# Fast generation + serving (GRPO rollouts, Ch22 serving, Ch28 GRPO)
+vllm>=0.8
+
+# Synthetic data generation (teacher LLM) and evaluation helpers
+anthropic>=0.40             # teacher model for synthetic data (Ch0, Ch13)
+openai>=1.60                # alternative teacher provider

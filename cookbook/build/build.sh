@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# build.sh — Render the Engram Cookbook in multiple formats
+# build.sh — Render The Domain Fine-Tuning Handbook in multiple formats
 #
 # Usage:
 #   ./build.sh          # runs all targets (html, pdf, epub); skips any whose
@@ -30,6 +30,7 @@ mkdir -p "${BUILD_OUT}"
 
 # Chapter list — must match TOC order exactly (used for the Pandoc concatenation)
 CHAPTERS=(
+  "quickstart/00-speedrun.md"
   "part-0-big-picture/01-why-finetune.md"
   "part-0-big-picture/02-mental-models.md"
   "part-0-big-picture/03-landscape-when-to-use-what.md"
@@ -53,6 +54,17 @@ CHAPTERS=(
   "part-6-deploy-beyond/21-saving-merging-exporting.md"
   "part-6-deploy-beyond/22-serving-and-integration.md"
   "part-6-deploy-beyond/23-toward-continual-learning.md"
+  "part-7-preference-rl/24-why-preference.md"
+  "part-7-preference-rl/25-reward-modeling.md"
+  "part-7-preference-rl/26-dpo.md"
+  "part-7-preference-rl/27-ppo-why-not.md"
+  "part-7-preference-rl/28-grpo.md"
+  "part-7-preference-rl/29-choosing-a-method.md"
+  "part-8-continual-learning/30-the-loop-architecture.md"
+  "part-8-continual-learning/31-data-selection-curation.md"
+  "part-8-continual-learning/32-how-much-how-often.md"
+  "part-8-continual-learning/33-catastrophic-forgetting.md"
+  "part-8-continual-learning/34-production-ops.md"
   "appendices/A-glossary.md"
   "appendices/B-project-layout-and-commands.md"
   "appendices/C-troubleshooting.md"
@@ -61,9 +73,10 @@ CHAPTERS=(
 
 # Book-content subdirectories (everything mdBook should treat as source)
 CONTENT_DIRS=(
+  quickstart
   part-0-big-picture part-1-concepts-primer part-2-setup-tools
   part-3-task-and-data part-4-training part-5-eval-iteration
-  part-6-deploy-beyond appendices
+  part-6-deploy-beyond part-7-preference-rl part-8-continual-learning appendices
 )
 
 # ---------------------------------------------------------------------------
@@ -114,8 +127,8 @@ build_html() {
 
   cat > "${stage}/book.toml" <<'TOML'
 [book]
-title = "The Engram Cookbook"
-authors = ["Engram Cookbook"]
+title = "The Domain Fine-Tuning Handbook"
+authors = ["The Domain Fine-Tuning Handbook"]
 language = "en"
 src = "src"
 TOML
@@ -157,14 +170,14 @@ build_pdf() {
   fi
 
   local combined; combined="$(concat_chapters)"
-  local pdf_out="${BUILD_OUT}/engram-cookbook.pdf"
+  local pdf_out="${BUILD_OUT}/domain-finetuning-handbook.pdf"
 
   for e in ${available}; do
     echo "Trying PDF engine: ${e}"
     set -- "${combined}" --from markdown --to pdf \
            --pdf-engine="${e}" --toc --toc-depth=2 \
-           --metadata title="The Engram Cookbook" \
-           --metadata author="Engram Cookbook"
+           --metadata title="The Domain Fine-Tuning Handbook" \
+           --metadata author="The Domain Fine-Tuning Handbook"
     case "${e}" in
       xelatex|lualatex|pdflatex|tectonic)
         set -- "$@" --variable geometry="margin=1in" --variable fontsize=11pt --variable colorlinks=true ;;
@@ -192,11 +205,11 @@ build_epub() {
     return 2
   fi
   local combined; combined="$(concat_chapters)"
-  local epub_out="${BUILD_OUT}/engram-cookbook.epub"
+  local epub_out="${BUILD_OUT}/domain-finetuning-handbook.epub"
   if pandoc "${combined}" --from markdown --to epub --toc --toc-depth=2 \
        --split-level=1 \
-       --metadata title="The Engram Cookbook" \
-       --metadata author="Engram Cookbook" \
+       --metadata title="The Domain Fine-Tuning Handbook" \
+       --metadata author="The Domain Fine-Tuning Handbook" \
        --output "${epub_out}"; then
     echo "EPUB output: ${epub_out}"
     return 0

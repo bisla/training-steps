@@ -1,6 +1,6 @@
 [book]
-title = "The Engram Cookbook"
-authors = ["Engram Cookbook"]
+title = "The Domain Fine-Tuning Handbook"
+authors = ["The Domain Fine-Tuning Handbook"]
 language = "en"
 src = ".."
 

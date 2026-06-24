@@ -71,6 +71,42 @@ See: Chapter 7 (How Training Actually Works).
 
 ---
 
+### Adapter/dataset versioning & model registry
+
+Once you retrain on a schedule (Part 8), you stop having "the model" and start having a
+*lineage* of models, each trained from a specific **dataset** snapshot. Versioning means giving
+every trained **LoRA** adapter and every dataset a unique, immutable name (a version tag or a
+content hash) so you can always answer "which data produced the adapter currently serving
+traffic?" A **model registry** is just the catalog that stores those versioned artifacts
+together with their metadata — training config, eval scores, parent version — so a deploy is
+"promote adapter v7" rather than "copy some files I hope are the right ones." This is what makes
+**rollback** a one-line operation instead of a panic.
+
+*One-line definition:* the discipline of giving every trained adapter and training dataset an
+immutable version, tracked in a registry, so any deployed model is traceable and reversible.
+
+See: Chapter 34 (Production Ops: Monitoring, Versioning, Gating, and Rollback).
+
+---
+
+### Advantage (and GAE)
+
+A number used in reinforcement-learning fine-tuning (**PPO**, **GRPO**, **RLOO**) that answers a
+sharper question than raw reward: "was this output *better than expected*?" If every answer to a
+prompt scores about 0.6 and this one scored 0.6, its advantage is roughly zero — nothing to learn.
+If it scored 0.9, the advantage is positive and the model is nudged to do more of that. Centering
+on "better than expected" instead of the absolute score is what keeps RL training stable.
+**PPO** estimates the baseline with a **value head** and smooths it across timesteps with a method
+called **GAE** (Generalized Advantage Estimation); **GRPO** skips all that and uses the average
+score of a *group* of samples for the same prompt as the baseline.
+
+*One-line definition:* how much better (or worse) an output was than the expected baseline; the
+signal RL methods actually train on, rather than the raw reward.
+
+See: Chapter 27 (PPO and the Full RL Loop: Why We Don't Use It Here).
+
+---
+
 ### Alpha (LoRA alpha, `lora_alpha`)
 
 One of the two main numbers you set when configuring a **LoRA** adapter. Alpha controls how
@@ -165,6 +201,43 @@ See: Chapter 6 (LoRA and QLoRA Without the Math Headache), Chapter 9 (The Toolbo
 
 ---
 
+### Canary deploy / shadow deploy
+
+Two ways to ship a new model without betting all your traffic on it at once. A **canary deploy**
+sends a small slice of real traffic (say 5%) to the new adapter while the rest keeps hitting the
+old one; if the canary's metrics look healthy, you ramp it up. A **shadow deploy** is even safer:
+the new model sees a copy of real requests but its outputs are *not returned to users* — you only
+log them and compare. Shadow mode is ideal for memory extraction because you can diff the new
+model's JSON against the current model's on live conversations before trusting it. Both pair
+naturally with a **canary / regression eval set** and **eval gating**.
+
+*One-line definition:* progressive rollout strategies — canary routes a small fraction of live
+traffic to the new model; shadow runs it on real traffic without serving its output — so problems
+surface before full release.
+
+See: Chapter 34 (Production Ops: Monitoring, Versioning, Gating, and Rollback).
+
+---
+
+### Canary / regression eval set
+
+A small, *frozen* set of examples you never train on, kept aside specifically to catch
+regressions across retraining rounds. The name comes from "canary in a coal mine": if a fresh
+round of fine-tuning quietly breaks something the model used to handle, scores on this fixed set
+drop and warn you before the model reaches users. Unlike your main **validation split** (which
+can grow and change), the canary set stays identical round after round so the numbers are
+comparable over time. For memory extraction, stock it with tricky conversations — empty inputs
+that should yield `[]`, multi-entity exchanges, edge-case types — plus a few general-language
+prompts to detect **catastrophic forgetting**.
+
+*One-line definition:* a fixed, never-trained-on evaluation set held constant across retraining
+rounds, used to detect regressions and forgetting before they ship.
+
+See: Chapter 33 (Catastrophic Forgetting Over Many Rounds), Chapter 34 (Production Ops:
+Monitoring, Versioning, Gating, and Rollback).
+
+---
+
 ### Catastrophic forgetting
 
 When fine-tuning goes wrong in a specific way: the model is trained so aggressively on your new
@@ -177,8 +250,18 @@ The main defenses: use **LoRA** (only updates a tiny fraction of weights), keep 
 rate** small, and don't train for too many **epochs**. Chapter 16 (Hyperparameters) covers the
 knobs to watch.
 
+In continual learning the risk compounds: each retraining round can shave off a little more
+general ability, so forgetting that looks negligible in one round becomes severe after ten. The
+round-to-round defenses are **replay** (mix ~10–30% prior/general data back into each round) and a
+frozen **canary / regression eval set** that includes general-language prompts, so a drop shows up
+immediately. Chapter 33 covers this over-many-rounds version specifically.
+
 *One-line definition:* the failure mode where aggressive fine-tuning overwrites a model's
-previously learned general abilities.
+previously learned general abilities; in continual learning it accumulates across rounds unless
+countered with replay and a frozen canary set.
+
+See: Chapter 33 (Catastrophic Forgetting Over Many Rounds), Chapter 16 (Hyperparameters: Which
+Knobs to Turn and When).
 
 ---
 
@@ -282,6 +365,25 @@ See: Chapter 13 (Creating Your Training Data with Synthetic Generation).
 
 ---
 
+### DPO (Direct Preference Optimization)
+
+The simplest way to teach a model "prefer this kind of answer over that kind." You show it
+**preference pairs** — for the same prompt, a *chosen* (better) answer and a *rejected* (worse)
+one — and DPO directly adjusts the model to raise the probability of chosen answers and lower the
+probability of rejected ones. Its big selling point: unlike **RLHF**/**PPO**, DPO needs *no
+separate reward model and no reinforcement-learning loop* — the preference data *is* the training
+signal, so it runs almost like a slightly fancier **SFT** job. It keeps the model from drifting
+too far using a **reference model** and a `beta` knob (the **KL** strength; TRL's default is 0.1).
+For memory extraction, DPO is the recommended first step beyond plain SFT — e.g. teach it to
+prefer clean `[]` over a hallucinated memory.
+
+*One-line definition:* a preference-tuning method that trains directly on chosen/rejected pairs to
+prefer better outputs, with no separate reward model and no RL loop.
+
+See: Chapter 26 (DPO: Learning Directly From Preference Pairs), Chapter 29 (Choosing Your Method).
+
+---
+
 ### Dropout (`lora_dropout`)
 
 A regularization technique: during training, a random fraction of the neurons (or, in LoRA's
@@ -321,6 +423,23 @@ for too many epochs risks **overfitting**; too few risks **underfitting**.
 *One-line definition:* one full pass through the training dataset from start to finish.
 
 See: Chapter 7 (How Training Actually Works).
+
+---
+
+### Eval gating
+
+A safety rule that says: a newly trained model is *not allowed to deploy* unless it clears your
+evaluation bar automatically. Instead of a human eyeballing scores and deciding, you encode the
+bar as a check — "**F1** on the **canary / regression eval set** must be at least as good as the
+currently deployed model, and structural-validity must stay above 99%" — and the deploy pipeline
+refuses to promote anything that fails. This is what makes a continual-learning loop safe to run
+often: a bad retraining round gets blocked by the gate rather than reaching users. Pairs naturally
+with **canary deploy** and **rollback**.
+
+*One-line definition:* an automated pass/fail check on eval metrics that a new model must clear
+before it is allowed to deploy.
+
+See: Chapter 34 (Production Ops: Monitoring, Versioning, Gating, and Rollback).
 
 ---
 
@@ -459,6 +578,25 @@ backprop instead of storing them all, reducing peak memory at the cost of ~10% e
 
 ---
 
+### GRPO (Group Relative Policy Optimization)
+
+The reinforcement-learning method this book actually recommends when you want RL. Its key trick:
+for each prompt, generate a *group* of several answers (TRL defaults to `num_generations=8`),
+score them all with a **reward function**, and use the group's own average score as the baseline
+— so each answer's **advantage** is simply "how much better than its siblings was it?" Because the
+group provides the baseline, **GRPO drops the value model (critic) entirely**, which is what makes
+it dramatically lighter than **PPO** (no **value head** to train). You still optionally keep a
+**reference model** via a **KL** penalty (`beta`, which defaults to 0.0 in TRL — i.e. *off* unless
+you raise it). For memory extraction, GRPO shines when correctness is easy to *check* but hard to
+hand-label: a programmatic **reward function** can score valid JSON and entity overlap directly.
+
+*One-line definition:* an RL fine-tuning method that scores a group of samples per prompt and uses
+their average as the baseline, dropping the separate value model that PPO requires.
+
+See: Chapter 28 (GRPO: Practical RL With Reward Functions), Chapter 29 (Choosing Your Method).
+
+---
+
 ### Hallucination
 
 When a model generates text that sounds confident and plausible but is factually wrong or
@@ -471,6 +609,23 @@ hallucination in a specific task.
 
 *One-line definition:* model-generated output that is plausible-sounding but factually incorrect
 or entirely fabricated.
+
+---
+
+### Hard-example mining
+
+A data-selection strategy for continual learning: instead of retraining on a random pile of new
+data, you deliberately go find the examples the current model *gets wrong* and prioritize those.
+The intuition is the same as studying: re-reading what you already know is wasted effort; you
+learn fastest from the problems you keep missing. In practice you run the deployed model over
+recent inputs, flag the failures (invalid JSON, missed memories, wrong entities), and feed
+corrected versions of those into the next round. It's the opposite of **importance sampling**'s
+broad reweighting — here you're surgically targeting known weak spots.
+
+*One-line definition:* deliberately selecting the examples the current model fails on and
+prioritizing them in the next training round, since failures carry the most learning signal.
+
+See: Chapter 31 (Selecting and Curating Data That Actually Helps).
 
 ---
 
@@ -498,6 +653,24 @@ points.
 that controls the training process but is not itself learned.
 
 See: Chapter 16 (Hyperparameters: Which Knobs to Turn and When).
+
+---
+
+### Importance sampling (data)
+
+A way of reweighting your training data so the mix the model trains on matches the mix it will
+actually face in production — without throwing away or duplicating rows by hand. If 60% of real
+conversations are short customer-support chats but your **dataset** is mostly long meeting
+transcripts, you can up-weight the support examples (and down-weight the over-represented ones) so
+each round's gradient reflects the real-world distribution. The phrase is borrowed from
+statistics, but in this book it just means "tilt the training mixture toward what matters" rather
+than treating every example as equally important. Contrast with **hard-example mining**, which
+targets specific failures rather than reshaping the overall mix.
+
+*One-line definition:* reweighting training examples so the distribution the model learns from
+matches the distribution it will see in production.
+
+See: Chapter 31 (Selecting and Curating Data That Actually Helps).
 
 ---
 
@@ -562,6 +735,43 @@ is where structured output behaviors are encoded.
 
 *One-line definition:* the three projection matrices that implement the attention mechanism; Q asks
 questions, K answers them, V supplies the content that gets mixed in.
+
+---
+
+### KL divergence / KL penalty
+
+KL divergence is a number measuring how far one probability distribution has drifted from another.
+In preference and RL fine-tuning it has a very concrete job: it measures how far the model you're
+training (the **policy model**) has wandered from its starting point (the **reference model**).
+Think of it as a *leash*. RL rewards push the model to chase the **reward function**, and without
+a leash it will happily walk off a cliff — producing degenerate, reward-hacking text that scores
+high but reads like nonsense. The **KL penalty** is a term added to the objective that pulls the
+model back toward the reference, trading a little reward for staying sane. The leash length is the
+`beta` knob: higher `beta` = shorter leash (stays close to the reference). It appears in **PPO**,
+**GRPO** (default `beta=0.0`, i.e. *no* leash unless you raise it), and inside **DPO**'s loss.
+
+*One-line definition:* a measure of how far the trained model has drifted from its reference; used
+as a penalty (a "leash") to keep RL/preference training from degenerating, tuned by `beta`.
+
+See: Chapter 27 (PPO and the Full RL Loop: Why We Don't Use It Here), Chapter 28 (GRPO: Practical
+RL With Reward Functions).
+
+---
+
+### KTO (Kahneman-Tversky Optimization)
+
+A preference-tuning method that's even cheaper to collect data for than **DPO**. DPO needs *pairs*
+(for one prompt, a better and a worse answer side by side). KTO needs only a single **thumbs-up or
+thumbs-down label** per example — "was this output good or bad?" — which is exactly the kind of
+signal you already get from production (a 👍/👎 button, an accepted-vs-edited memory). The name
+nods to the prospect-theory work of psychologists Kahneman and Tversky on how people weigh gains
+and losses. Use KTO when you can't easily produce matched pairs but you *can* label individual
+outputs as acceptable or not. TRL exposes it top-level as `KTOTrainer`.
+
+*One-line definition:* a preference method that learns from single per-example good/bad labels
+instead of chosen/rejected pairs, making feedback far easier to collect than DPO's.
+
+See: Chapter 26 (DPO: Learning Directly From Preference Pairs), Chapter 29 (Choosing Your Method).
 
 ---
 
@@ -809,6 +1019,24 @@ See: Chapter 7 (How Training Actually Works).
 
 ---
 
+### ORPO (Odds Ratio Preference Optimization)
+
+A preference method that folds **SFT** and preference tuning into a *single* step. Normally you'd
+fine-tune on good outputs (SFT) and then run **DPO** to push away from bad ones — two passes.
+ORPO does both at once by adding a small "odds-ratio" penalty to an ordinary SFT loss: the model
+learns the chosen answers while being gently pushed away from the rejected ones in the same go.
+Its defining property is that it is **reference-free** — unlike **DPO**, **PPO**, and **GRPO**, it
+needs *no separate reference model* held in memory, which saves VRAM. In TRL 1.6.0 it lives in
+`trl.experimental.orpo`. Worth knowing as a one-pass alternative when you want SFT and preference
+shaping together.
+
+*One-line definition:* a reference-free preference method that combines SFT and preference tuning
+into one step via an odds-ratio penalty, needing no separate reference model.
+
+See: Chapter 26 (DPO: Learning Directly From Preference Pairs), Chapter 29 (Choosing Your Method).
+
+---
+
 ### Overfitting
 
 When the model learns the training examples too well — memorizing specific conversations instead
@@ -855,6 +1083,45 @@ lower means the model finds the text more predictable.
 
 ---
 
+### Policy model and Reference model
+
+Two copies of the model that show up everywhere in RL and preference fine-tuning (**PPO**,
+**GRPO**, **DPO**). The **policy model** is the one you're actually training — "policy" is the RL
+word for "the thing that decides what to do," and here it decides which token to emit next. The
+**reference model** is a *frozen snapshot* of where you started (usually your **SFT** model), kept
+untouched as a fixed point of comparison. Training measures how far the policy has drifted from
+the reference using **KL divergence**, and the **KL penalty** uses that to keep the policy on a
+leash. So: the policy moves, the reference stands still, and the gap between them is what you
+control. (**ORPO** is notable for being *reference-free* — it skips the second copy.)
+
+*One-line definition:* the policy is the model being trained; the reference is a frozen copy of
+the starting model used as the anchor that the KL penalty keeps the policy close to.
+
+See: Chapter 27 (PPO and the Full RL Loop: Why We Don't Use It Here).
+
+---
+
+### PPO (Proximal Policy Optimization)
+
+The classic, full-strength reinforcement-learning algorithm behind the original **RLHF** — and a
+cautionary tale for this book's reader. PPO is powerful but *heavy*: a single training step juggles
+**four** models at once — the **policy model** being trained, a frozen **reference model**, a
+**reward model** that scores outputs, and a **value head / critic** that predicts the baseline for
+computing **advantage** — all kept in memory together, with a **KL penalty** leashing the policy to
+the reference. That's a lot of moving parts and VRAM for a single consumer GPU. In TRL 1.6.0 PPO
+has been relocated to `trl.experimental.ppo` and the old hand-rolled `.step()` loop is gone, so
+the book treats PPO as *conceptual*: understand the full loop, then reach for **GRPO**, which gets
+most of the benefit by dropping the value model.
+
+*One-line definition:* the full RLHF algorithm that trains a policy against a reward model using a
+value-head baseline and a KL leash; powerful but heavy, so this book teaches it conceptually and
+uses GRPO instead.
+
+See: Chapter 27 (PPO and the Full RL Loop: Why We Don't Use It Here), Chapter 29 (Choosing Your
+Method).
+
+---
+
 ### Precision (metric)
 
 In evaluation, precision answers: "of all the memories the model extracted, what fraction were
@@ -867,6 +1134,43 @@ Precision is paired with **recall** and combined into **F1 score**.
 much noise the model adds.
 
 See: Chapter 18 (Did It Actually Work? Evaluating Memory Extraction).
+
+---
+
+### Preference optimization / preference tuning
+
+The umbrella name for the whole family of techniques that teach a model to *prefer better answers
+over worse ones*, rather than just imitating a single "correct" answer the way **SFT** does. The
+shift in mindset: **SFT** shows the model one gold output per input and says "produce this"; 
+preference tuning shows it *comparisons* ("this answer is better than that one") and says "lean
+toward the better kind." This matters when there's no single right answer but there *is* a clear
+better/worse — e.g. two valid memory extractions where one is cleaner or avoids a borderline
+hallucination. The family includes **DPO**, **KTO**, **ORPO**, and the RL methods **PPO**,
+**GRPO**, and **RLOO**.
+
+*One-line definition:* the family of methods that train a model from comparisons of better-vs-worse
+outputs instead of single gold labels; the step beyond imitation-style SFT.
+
+See: Chapter 24 (Beyond Imitation: Why Preference and RL).
+
+---
+
+### Preference pair (chosen / rejected)
+
+The basic unit of training data for **DPO** (and for training a **reward model**). A preference
+pair is, for *one prompt*, two responses: a **chosen** one (the better answer) and a **rejected**
+one (the worse answer). The model never sees an absolute score — only the relative judgment "this
+beats that," which is far easier for humans (or a stronger model) to produce reliably than a
+precise quality number. In TRL these arrive as dataset columns named `prompt`, `chosen`, and
+`rejected`. For memory extraction, a natural pair is the same conversation with a clean correct
+extraction as *chosen* and a near-miss (a hallucinated entity, a bundled fact) as *rejected*.
+(**KTO** relaxes this to single good/bad labels instead of pairs.)
+
+*One-line definition:* a single prompt paired with a better (chosen) and a worse (rejected)
+response; the training unit for DPO and reward models.
+
+See: Chapter 25 (Rewards: Functions and Reward Models), Chapter 26 (DPO: Learning Directly From
+Preference Pairs).
 
 ---
 
@@ -955,6 +1259,134 @@ Recall is paired with **precision** and combined into **F1 score**.
 measures how much the model misses.
 
 See: Chapter 18 (Did It Actually Work? Evaluating Memory Extraction).
+
+---
+
+### Replay / replay ratio / rehearsal
+
+The single most important defense against **catastrophic forgetting** in a continual-learning
+loop. The idea is borrowed from how you'd keep a skill sharp: when you study something new, you
+also re-review the old material so you don't lose it. In training terms, each retraining round
+mixes a fraction of *prior and general* data back in alongside the fresh new data — this is
+**replay** (also called **rehearsal**). The **replay ratio** is that fraction; this book's rule of
+thumb is ~10–30% (default around 20%). Too little and the model forgets its older abilities; too
+much and it barely learns the new task. For memory extraction, replay means each round still
+includes a slice of earlier conversations and some general instruction-following examples.
+
+*One-line definition:* mixing a fraction of prior/general data into each new training round
+(the replay ratio, ~10–30%) so the model retains old abilities; also called rehearsal.
+
+See: Chapter 32 (How Much Data, and How Often to Retrain), Chapter 33 (Catastrophic Forgetting
+Over Many Rounds).
+
+---
+
+### Reward function (programmatic)
+
+A plain Python function that scores a model's output — no neural network, no training required.
+Where a **reward model** *learns* what "good" means from human preferences, a programmatic reward
+function just *encodes* it in code: you write the rules. For memory extraction this is a
+beautiful fit, because much of "good" is mechanically checkable — does it parse as valid JSON?
+does every object have the right fields? do the entities actually appear in the conversation? Each
+of those becomes a few lines that return a number. In TRL's **GRPO**, a reward function has the
+signature `fn(completions, **kwargs) -> list[float]`, and you can pass several (weighted) at once.
+The catch is **reward hacking**: the model will exploit any loophole your rules leave open.
+
+*One-line definition:* a hand-written Python function that scores outputs by encoded rules (e.g.
+valid JSON, correct entities), used as the reward signal in GRPO — no trained model needed.
+
+See: Chapter 25 (Rewards: Functions and Reward Models), Chapter 28 (GRPO: Practical RL With Reward
+Functions).
+
+---
+
+### Reward hacking
+
+When a model learns to maximize the **reward** in a way that technically scores high but defeats
+the spirit of what you wanted — gaming the metric instead of doing the task. The classic shape:
+your **reward function** gives points for valid JSON, so the model discovers that emitting `[]`
+(an empty but perfectly valid array) every single time scores well while extracting *nothing*.
+The reward went up; the model got worse. The fixes are to make the reward harder to game (reward
+*correct* extraction, not just *valid* JSON), combine several reward signals so no single loophole
+dominates, and watch a **canary / regression eval set** for scores that rise while real quality
+falls. It's the central hazard of any RL method (**PPO**, **GRPO**).
+
+*One-line definition:* the failure mode where a model maximizes the reward signal through a
+loophole that satisfies the metric but not the actual goal.
+
+See: Chapter 25 (Rewards: Functions and Reward Models), Chapter 28 (GRPO: Practical RL With Reward
+Functions).
+
+---
+
+### Reward model
+
+A *separate, trained* model whose only job is to look at an output and emit a single number: how
+good is this? You train it on **preference pairs** — shown a *chosen* and a *rejected* response,
+it learns to score the chosen one higher — and then **PPO**-style RL uses its scores as the reward
+signal. In TRL you build one with `RewardTrainer` on top of an
+`AutoModelForSequenceClassification` (`num_labels=1`). It is the right tool when "good" is too
+fuzzy to write as code (tone, helpfulness, subtle correctness). Contrast with a **reward function
+(programmatic)**, which is just Python rules — for memory extraction the programmatic route is
+usually enough, so a full reward model is more often discussed than built here.
+
+*One-line definition:* a separately trained model that scores output quality as a number, learned
+from preference pairs; supplies the reward signal in RLHF/PPO-style training.
+
+See: Chapter 25 (Rewards: Functions and Reward Models).
+
+---
+
+### RLHF (Reinforcement Learning from Human Feedback)
+
+The training recipe that famously turned raw language models into helpful assistants. It's a
+three-stage pipeline: (1) **SFT** to get a baseline that follows instructions, (2) collect human
+**preference pairs** and train a **reward model** on them, then (3) use reinforcement learning —
+classically **PPO** — to push the model toward outputs the reward model scores highly, with a
+**KL penalty** keeping it from drifting too far from the SFT starting point. RLHF is the *idea*
+("optimize against human preferences with RL"); **PPO** is one *implementation* of stage 3.
+Modern methods like **DPO** reach a similar goal while collapsing stages 2–3 into one and skipping
+the reward model and RL loop entirely.
+
+*One-line definition:* the SFT → reward-model → RL pipeline that aligns a model to human
+preferences; the original approach that DPO and GRPO later simplified.
+
+See: Chapter 24 (Beyond Imitation: Why Preference and RL), Chapter 27 (PPO and the Full RL Loop:
+Why We Don't Use It Here).
+
+---
+
+### RLOO (REINFORCE Leave-One-Out)
+
+A lightweight online-RL method in the same spirit as **GRPO**: generate several samples per
+prompt, score them, and — crucially — like GRPO it needs **no value model / critic**. The
+"leave-one-out" part is how it builds each sample's baseline: a given sample's baseline is the
+*average reward of the other samples* for that prompt (leaving itself out), so its **advantage** is
+"how much better than my peers was I?" That makes it cheaper than **PPO** while staying a genuine
+RL method. In TRL it's available as `RLOOTrainer`. Worth knowing as a one-line alternative in the
+decision guide alongside GRPO; this book centers GRPO but RLOO is a close cousin.
+
+*One-line definition:* a value-model-free online RL method that baselines each sample against the
+average of the other samples for the same prompt; a lighter cousin of GRPO/PPO.
+
+See: Chapter 28 (GRPO: Practical RL With Reward Functions), Chapter 29 (Choosing Your Method).
+
+---
+
+### Rollback
+
+The escape hatch of production ops: instantly reverting to the previous, known-good model when a
+freshly deployed one misbehaves. Because every adapter is versioned (see **adapter/dataset
+versioning & model registry**), rollback isn't a rebuild — it's pointing the server back at the
+prior version tag, which should take seconds. A continual-learning loop *will* eventually ship a
+bad round; what keeps that from becoming an incident is that **eval gating** blocks most bad
+rounds before deploy, **canary / shadow deploy** catches the rest on a small slice of traffic, and
+rollback undoes anything that slips through. Plan the rollback path *before* you need it.
+
+*One-line definition:* reverting serving to the previous known-good model version; the fast,
+pre-planned recovery when a new deploy regresses.
+
+See: Chapter 34 (Production Ops: Monitoring, Versioning, Gating, and Rollback).
 
 ---
 
@@ -1166,6 +1598,24 @@ in training data; their entire value comes from being unseen.
 the model generalizes to unseen examples.
 
 See: Chapter 14 (Cleaning, Splitting, and Sanity-Checking Data).
+
+---
+
+### Value head / critic
+
+The extra component **PPO** bolts onto the model to estimate the **advantage**. While the main
+model decides *what to say* (the **policy model**), the value head — also called the **critic** —
+sits alongside it and predicts *how much reward to expect* from a given state, i.e. the baseline.
+Subtracting that baseline from the actual reward is what turns a raw score into an advantage
+("better than expected?"). In TRL this is the `AutoModelForCausalLMWithValueHead` wrapper. The
+catch: the critic is itself a model that has to be trained and held in memory, which is a big part
+of why PPO is heavy — and exactly the part **GRPO** and **RLOO** throw away, replacing it with the
+average score across a group of samples.
+
+*One-line definition:* PPO's learned baseline predictor (the critic) that estimates expected
+reward so an advantage can be computed; the costly piece GRPO and RLOO eliminate.
+
+See: Chapter 27 (PPO and the Full RL Loop: Why We Don't Use It Here).
 
 ---
 

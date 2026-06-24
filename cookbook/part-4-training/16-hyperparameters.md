@@ -191,7 +191,7 @@ In practice, `0.01` works well and you rarely need to change it. It is a weaker 
 - `"cosine"` — best general default. Rate decays smoothly to near-zero. Rarely needs changing.
 - `"linear"` — simpler. Decays linearly from start to zero. Slightly more aggressive early decay. Fine if cosine isn't available.
 - `"constant"` — learning rate never changes. Only useful for debugging or very short runs.
-- `"cosine_with_restarts"` — rate decays, then resets multiple times. Useful for very long training runs or continual learning (discussed in *Ch23 - Toward Engram*). Not useful for standard fine-tuning.
+- `"cosine_with_restarts"` — rate decays, then resets multiple times. Useful for very long training runs or continual learning (discussed in *Ch23 - Continual Learning and Scaling Up*). Not useful for standard fine-tuning.
 
 **For memory extraction fine-tuning: always use `"cosine"`.**
 

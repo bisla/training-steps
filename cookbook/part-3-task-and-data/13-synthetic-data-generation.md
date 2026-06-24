@@ -582,17 +582,28 @@ If something looks systematically wrong, fix the generation prompt and regenerat
 
 ---
 
-## How much data do you need?
+## How much data do you actually need?
 
-| Goal | Rows |
-|---|---|
-| Proof of concept, see if fine-tuning works at all | 200–500 |
-| A model you'd actually use in a product | 1,000–3,000 |
-| Robust, production-quality model | 5,000–20,000 |
+This is the question everyone asks first, and the honest answer is: less than you fear, and the right amount is whatever your eval tells you. This section is the canonical home for sizing your *first* dataset. (Once you're running this as a living system across many retraining rounds, the question changes shape — how much *new* data per round, and how often — and that lives in *Ch32 - How Much Data, and How Often to Retrain*. Don't size your continual loop from this table.)
 
-These are rough ballparks — task complexity matters more than a magic number. Memory extraction is a well-defined, structured task, which means you'll see meaningful improvement earlier than you would on something open-ended like creative writing.
+Think of it like learning to parallel park. You don't need a thousand attempts to get the basic motion. You need a handful to stop crashing, a few dozen to be reliable, and after that each extra attempt teaches you less than the last. A narrow, well-defined task like memory extraction behaves the same way: the model picks up the *format* almost immediately, the *judgment* over a thousand-ish examples, and then the curve flattens.
 
-The practical approach: start at 500 rows, run a fine-tune (Ch15), evaluate (Ch18), see where it fails, then add targeted data for those failure cases. Iteration beats volume.
+Here are the ranges for a ~4B student model on this task, with the reasoning behind each — not magic numbers:
+
+| Stage | Rows | What you get, and why |
+|---|---|---|
+| **Proof of life** | 200–500 | Enough for the model to reliably emit valid JSON in the pinned schema and stop hallucinating fields. The *shape* of the task gets learned fast — this is exactly the Ch0 speedrun's lower bound. Don't expect production accuracy yet; expect "it clearly understands the job." |
+| **Solid baseline** | 1,000–3,000 | Where most projects should live. By here the model has seen enough variety to handle topics and phrasings it wasn't trained on verbatim. Accuracy on a held-out eval set climbs steeply through this band. If you only ever build one dataset, build one here. |
+| **Strong** | 3,000–10,000 | Squeezes out the long tail — unusual conversation shapes, rare entity types, tricky `decision` vs. `fact` calls. Note the lever: across this band, *diversity and label quality* move the needle far more than raw row count. 5,000 varied, clean rows beat 10,000 near-duplicates every time. |
+| **Diminishing returns** | >~10,000 | For a task this narrow on a model this size, you're mostly paying for marginal gains. Your effort is better spent on eval coverage, harder edge-case data, or the preference-tuning of Parts 7–8 than on generating row 10,001. |
+
+**Why quality and diversity beat raw count.** A model trained on 800 genuinely different conversations generalizes better than one trained on 4,000 that are slight rewordings of the same fifty. Duplicate-ish data doesn't teach the model anything new; it just teaches it to be *more confident* about the narrow slice it already knows — which is overfitting wearing a bigger number. This is why the next section ("Making synthetic data diverse and not slop") matters more than your row target does.
+
+**The tokens rule of thumb.** Another way to sanity-check size: count training *tokens*, not rows. For a narrow LoRA/QLoRA fine-tune, somewhere around **1–5 million training tokens** is ample. A memory-extraction row (a multi-turn conversation plus its JSON output) runs roughly 600–1,200 tokens, so ~2,000–4,000 rows already lands you squarely in that window. If you're well past 5M tokens and your eval has stopped improving, that's the curve flattening — believe it.
+
+**The actual recipe: start small, measure, grow only if eval says so.** Don't pick a final number up front. Generate ~500 rows, fine-tune (*Ch15*), and run the held-out eval from *Ch18 - Did It Actually Work?*. Read where it fails — wrong `type` labels? missed entities? whole categories of conversation it fumbles? Then generate *targeted* data for those specific failures and retrain. *Ch20 - Iterating: From a Mediocre Model to a Good One* is the full playbook for this loop. A growing eval score earns the next batch of data; a flat one tells you to fix quality or coverage instead of adding volume. Iteration beats volume, almost always.
+
+**What this costs.** The good news is that the proof-of-life and baseline stages are cheap enough that there's no excuse not to start. Generating ~1,000 rows with a teacher LLM — generation plus the LLM-as-judge pass — costs only a few dollars, roughly **$1–5** depending on whether you run Sonnet or Opus as the teacher (see the cost ballpark in the pipeline script above). That's the synthetic-data slice of the Ch0 speedrun's **~$5–30 all-in budget**, where the rest goes to an hour or three of rented GPU time for the actual fine-tune. In other words: the experiment that tells you whether this whole approach works for your task costs about the same as lunch. Run it before you agonize over the perfect dataset size.
 
 ---
 
@@ -660,6 +671,132 @@ A subtle risk: if your teacher model has quirks (unusual phrasing, a preference 
 2. **Vary the generation temperature.** Temperature controls how random vs. predictable the model's output is — higher values produce more varied text, lower values produce more consistent formatting. Claude defaults to around 1.0. You can explicitly set `temperature=0.9` in the API call for more variety, or `temperature=0.7` for more reliable JSON formatting.
 3. **Human spot-check 5% of rows.** Even 25 rows out of 500 gives you a calibration signal. If you're seeing systematic bias, fix the prompt.
 4. **Don't mix teachers mid-dataset.** If you switch from Sonnet to Opus halfway through, the dataset will have two subtly different labeling styles. Use one teacher for one dataset version.
+
+---
+
+## Making synthetic data diverse and not slop
+
+"Slop" is the word for synthetic data that *looks* fine row by row but is secretly the same five conversations wearing different hats. It's the single most common way a synthetic dataset quietly fails: every row parses, the judge passes them, the file hits your target row count — and the trained model is brittle because it only ever saw a narrow slice of the world. The seeds in Step 1 are your first defense. This section is about pushing diversity further and catching mode collapse *before* it reaches training.
+
+Think of a teacher LLM as a slightly lazy storyteller. Ask it for "a conversation" a thousand times with the same prompt and it will drift toward its favorite groove — the same opening ("Hey! How's it going?"), the same comfortable topics, the same tidy three-memory output. Your job is to keep nudging it off that groove.
+
+### Seed every axis, not just the topic
+
+The Step 1 seeds already vary topic, persona, style, and turn count. The reason that works is that you're sampling a *combination* each call, so the space of possible conversations is the product of all four lists — fifteen topics × eight personas × five styles × five lengths is already 3,000 distinct setups before the teacher adds its own variation. The practical move when your data feels samey is to widen the *thin* axis. Most people over-invest in topics and under-invest in style and length. A conversation that's "quick back-and-forth, short messages, 6 turns" produces structurally different training signal than "warm and detailed, 14 turns" even on the *same* topic — and your model needs both.
+
+### Control the distribution across the four memory types
+
+The pinned schema has exactly four memory types — `preference | fact | decision | relationship` — and left to its own devices, a teacher will lopsidedly favor `fact`, because facts are the easiest thing to pull out of a transcript. A student trained on that skew gets good at facts and weak at spotting a `decision` ("we're going with the September launch") or a `relationship` ("Maya is Tom's manager"). The fix is to *ask* for balance and then *measure* it.
+
+First, steer generation by occasionally focusing a call on an underrepresented type. Add an optional emphasis to your prompt builder:
+
+```python
+# Add to prompts.py — biases a fraction of calls toward a target memory type.
+import random
+
+# The four pinned memory types. Keep this list in sync with the schema and
+# the verbatim SYSTEM_PROMPT (preference | fact | decision | relationship).
+MEMORY_TYPES = ["preference", "fact", "decision", "relationship"]
+
+def type_emphasis(target_type: str | None) -> str:
+    """
+    Returns an extra instruction nudging the teacher toward a memory type,
+    or an empty string for an unbiased call. Used to rebalance the dataset
+    when one type is underrepresented.
+    """
+    if not target_type:
+        return ""
+    return (
+        f"\nIMPORTANT: write the conversation so it naturally contains at least "
+        f"two '{target_type}' memories, without forcing it or sounding unnatural."
+    )
+
+def pick_emphasis(p_biased: float = 0.4) -> str | None:
+    """With probability p_biased, focus this call on a random memory type."""
+    if random.random() < p_biased:
+        return random.choice(MEMORY_TYPES)
+    return None
+```
+
+You append `type_emphasis(pick_emphasis())` to the prompt inside `generate_one_row()`. Leaving ~60% of calls unbiased keeps conversations natural; the biased ~40% backfill the thin types.
+
+Second, *measure* the resulting distribution so you're steering with data, not vibes:
+
+```python
+# audit_types.py — count memory types across the generated dataset.
+import json
+from collections import Counter
+
+def type_distribution(path: str) -> Counter:
+    counts = Counter()
+    with open(path) as f:
+        for line in f:
+            row = json.loads(line)
+            for mem in row["memories"]:
+                counts[mem["type"]] += 1
+    return counts
+
+if __name__ == "__main__":
+    import sys
+    dist = type_distribution(sys.argv[1] if len(sys.argv) > 1 else "data/memories_train.jsonl")
+    total = sum(dist.values())
+    for t, n in dist.most_common():
+        print(f"{t:14s} {n:5d}  ({n/total*100:4.1f}%)")
+    # Healthy-ish target: no single type above ~50%, none below ~10%.
+    # An exact 25/25/25/25 split is NOT the goal — real conversations
+    # genuinely contain more facts than decisions. You're avoiding a
+    # pathological skew, not enforcing a quota.
+```
+
+If `fact` is eating 70% of your memories, raise `p_biased` or add more decision/relationship-rich topics to your seeds, then regenerate the thin slice. You don't need a perfect quota — real conversations skew toward facts — you just need every type *well represented* so the student learns all four.
+
+### Avoid teacher repetition and mode collapse
+
+Beyond type skew, watch for the teacher repeating itself at the *phrasing* level — the same names (every conversation stars a "Sarah" and a "Mike"), the same opening line, the same memory wording. A few cheap habits keep it honest:
+
+- **Run the teacher with temperature variety**, as the previous section describes — a higher `temperature` (≈0.9–1.0) buys more lexical variety; drop it only if JSON formatting gets unreliable.
+- **Inject entropy into the prompt.** Pass a couple of random seed names and a random "detail to include" so two calls with the same topic/persona still diverge. A one-line addition like `f"Use names such as {random.choice(NAMES)} and {random.choice(NAMES)}."` measurably broadens the entity vocabulary your student sees.
+- **Don't crank the biased fraction too high.** If you force a target type on *every* call, you trade one kind of slop (all facts) for another (every conversation conspicuously engineered to contain a decision). Keep the unbiased majority.
+
+### A light validation and dedup pass before it goes downstream
+
+You already have the right *primitives* — `fingerprint`/`is_duplicate` and `passes_length_filter` from Step 5, plus the LLM judge. The point here is to run a final, cheap, deterministic sweep over the *finished* file to catch the diversity failures that slip past row-by-row checks, and to confirm the data is structurally sound before training touches it:
+
+```python
+# validate.py — a fast, no-API gate to run once on the finished JSONL.
+import json
+from collections import Counter
+
+VALID_TYPES = {"preference", "fact", "decision", "relationship"}
+
+def validate_dataset(path: str) -> None:
+    rows, fingerprints, bad = [], Counter(), 0
+    with open(path) as f:
+        for i, line in enumerate(f):
+            row = json.loads(line)
+            for mem in row["memories"]:
+                # Schema check against the four pinned types.
+                if mem["type"] not in VALID_TYPES:
+                    print(f"  row {i}: invalid type {mem['type']!r}")
+                    bad += 1
+                if not mem["text"].strip().endswith((".", "!", "?")):
+                    # The schema wants standalone *sentences*, not fragments.
+                    print(f"  row {i}: non-sentence text: {mem['text']!r}")
+            # Near-duplicate detection on the first 200 chars (same as Step 5).
+            fp = row["conversation"][:200].lower().replace(" ", "")
+            fingerprints[fp] += 1
+            rows.append(row)
+
+    dupes = sum(c - 1 for c in fingerprints.values() if c > 1)
+    print(f"\n{len(rows)} rows | {bad} schema issues | ~{dupes} near-duplicates")
+    print("If duplicates are >2-3% of rows, widen your seeds and regenerate.")
+
+if __name__ == "__main__":
+    import sys
+    validate_dataset(sys.argv[1] if len(sys.argv) > 1 else "data/memories_train.jsonl")
+```
+
+This is deliberately a *light* pass — schema sanity, sentence-shape, and a duplicate count, all without spending another API token. It's a tripwire, not a deep clean. The full train/validation/test split and rigorous schema validation belong in *Ch14 - Cleaning, Splitting, and Sanity-Checking Data*, which runs right after this chapter. And once you're in the continual-learning loop and need to actively *select* which data earns a place in the next round, the advanced curation lives in *Ch31 - Selecting and Curating Data That Actually Helps*. For now, the goal is simply: don't hand obviously sloppy data to the trainer.
 
 ---
 

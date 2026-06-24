@@ -1,4 +1,4 @@
-# Ch23 - Toward Engram: Continual Learning and Scaling Up
+# Ch23 - Continual Learning and Scaling Up
 
 You built something real.
 
@@ -10,9 +10,12 @@ to use in a real product.
 That is not a toy. That is the foundation of something genuinely useful.
 
 But there is a gap between "a model I fine-tuned once" and "a model that keeps getting smarter
-as it sees more of your world." That gap is what this final chapter is about. We will close the
-loop back to the Engram vision that opened this book, show you the practical steps toward a
-self-improving pipeline, and be honest about where the hard problems live.
+as it sees more of your world." That gap is what this chapter is about. We will treat domain
+fine-tuning not as a one-time job but as a *living system* — one that keeps absorbing your world
+over time — show you the practical steps toward a self-improving pipeline, and be honest about
+where the hard problems live. This chapter is the conceptual bridge into the rest of the book:
+Part 7 makes the model *prefer* better answers, and Part 8 turns the continual-learning sketch
+here into a real production system.
 
 ---
 
@@ -25,7 +28,8 @@ self-improving pipeline, and be honest about where the hard problems live.
   and compounding errors over many update rounds
 - Practical next steps: bigger models, full fine-tuning, multi-task training, and RAG+fine-tune
   hybrids
-- Where to go from here — the appendices, the broader ecosystem, and the honest frontier
+- Where this chapter hands off — to Part 7 (teaching the model to *prefer* better answers) and
+  Part 8 (building the continual-learning loop sketched here into a real production system)
 
 ---
 
@@ -764,10 +768,10 @@ memory-extraction systems:
   so the model can reason about what it already knows about a user when extracting new
   memories
 
-This is closer to what Engram is building: a model that has internalized *how* to reason
-about your context (via fine-tuning) and is dynamically fed *what* it needs to know
-(via retrieval). The fine-tuned model is the discipline; the retrieval layer is the working
-memory.
+This is the architecture that ambitious continual-learning systems converge on: a model that
+has internalized *how* to reason about your context (via fine-tuning) and is dynamically fed
+*what* it needs to know (via retrieval). The fine-tuned model is the discipline; the retrieval
+layer is the working memory.
 
 The integration point is simple: in your serving code from Ch22, before calling the model,
 retrieve the top-K existing memories for the current user and inject them into the system
@@ -776,16 +780,23 @@ just helps it avoid creating duplicate memories or contradicting what it already
 
 ---
 
-## Where this points: the Engram vision
+## Where this points: context as weights
 
-In June 2026, Engram announced a specific bet: instead of spending training compute on
-public data, start from a strong pretrained model and spend that same compute internalizing
-*your* context. Their north star is a single algorithm that absorbs arbitrary amounts of
-data into a model that gets continually better — running the process on all company data
-every day, moving toward every hour, eventually every minute.
+There is a broad direction the field has been moving toward, and it is worth naming because
+it reframes everything you just built. The dominant way to give a model new context today is
+to put it *in the prompt* — ever-larger context windows, retrieval pipelines that stuff more
+documents into each request. That works, but it is expensive at inference time and the model
+never actually *learns* anything; it re-reads the same context on every call.
 
-That sounds ambitious. It is. But you now understand every component of the system they are
-describing:
+The alternative bet is the one this whole book is an instance of: instead of spending more and
+more tokens describing your world on every request, spend training compute *internalizing*
+your world into the weights. Start from a strong pretrained model and continually retrain it
+on your own data so the knowledge lives in the parameters, not in a giant prompt. Taken to its
+limit, the vision is a process that absorbs arbitrary amounts of new data into a model that
+gets continually better — retraining on fresh data every day, then moving toward every hour,
+eventually approaching real time.
+
+That sounds ambitious. It is. But you now understand every component of such a system:
 
 - The base pretrained model — you chose one in Ch10
 - Context compression (LoRA) — you learned this in Ch6
@@ -794,10 +805,10 @@ describing:
 - Evaluation and iteration — you debugged it in Ch18 and Ch19
 - Continual retraining — you just wired it into a cron job in this chapter
 
-The gap between the pipeline you built and what Engram is doing is mostly scale and
-engineering maturity: more data, faster retraining, more sophisticated forgetting mitigations,
-production-grade infrastructure for logging, evaluation, and deployment. The conceptual
-architecture is the same.
+The gap between the pipeline you built and a frontier continual-learning system is mostly scale
+and engineering maturity: more data, faster retraining, more sophisticated forgetting
+mitigations, production-grade infrastructure for logging, evaluation, and deployment. The
+conceptual architecture is the same.
 
 You are not a spectator of this technology. You built it.
 
@@ -854,17 +865,45 @@ gives the model its roots while keeping training time manageable.
   at scale, and compounding errors — none are fully solved, all have practical mitigations.
 - Practical next steps: larger base models (14B–32B), full fine-tuning for narrow quality
   ceilings, multi-task training with task identifiers, and RAG+fine-tune hybrids.
-- The Engram architecture — internalize context into weights, retrain continuously — is built
-  from the same components you have been assembling all book. Scale and engineering maturity
-  are what separate a research demo from a product.
+- The "context as weights" architecture — internalize context into weights, retrain
+  continuously, rather than re-stuffing an ever-larger prompt — is built from the same
+  components you have been assembling all book. Scale and engineering maturity are what
+  separate a research demo from a product.
 - You built something real. A specialist model running on your data, improving over time,
   without needing a 70B general model or a giant context window.
 
 ## Next
 
-This is the final chapter of the main text. The appendices are your reference layer:
-**Appendix A** (Glossary) has a plain-English definition of every term used across all 23
-chapters; **Appendix B** (Project Layout and Command Cheat-Sheet) collects every command
-into one page; **Appendix C** (Troubleshooting Common Errors) is the first place to look
-when something breaks; and **Appendix D** (Cost, Time, and a Go-Live Checklist) gives you
-the numbers and the checklist to take what you built here into production.
+This chapter is the conceptual bridge. You have a model that works, that is deployed, and that
+you now know *could* keep improving. The next two parts make that real — and they are the deep,
+runnable build-out, where this chapter was the sketch.
+
+**Part 7 — Preference & RL (Ch24–29): teach the model to *prefer* better answers.** Everything
+up to here was *imitation*: you showed the model correct outputs (SFT) and it learned to copy
+them. But "correct JSON" and "the *best* extraction" are not the same thing — two valid outputs
+can differ in quality, and SFT has no way to express "this one is better than that one."
+Preference and reinforcement learning are how you teach that. Ch24 frames the leap from
+imitation to preference; **Ch25** builds a reward function/model — a way to *score* an output,
+not just match it; **Ch26** covers DPO, the simplest runnable way to train directly on
+preference pairs (chosen vs. rejected); **Ch27** explains PPO conceptually (the full
+policy/value/KL loop, and why it is impractical for this reader); **Ch28** is GRPO, the
+runnable method this book recommends; and **Ch29** is the decision guide for choosing among
+them. This is where the failure cases your pipeline above logs — the near-misses and judgment
+calls — become training signal instead of just rejected rows.
+
+**Part 8 — Continuous Learning as a System (Ch30–34): turn this chapter's sketch into
+production.** The cron pipeline here is a proof of concept. Part 8 builds it out properly:
+**Ch30** is the loop architecture (how the collect → label → train → eval → deploy cycle is
+structured as a real system); **Ch31** is data curation at scale (the judging and auditing this
+chapter waved at, done rigorously); **Ch32** tackles how much to retrain and how often;
+**Ch33** goes deep on catastrophic forgetting and the mitigations only sketched here; and
+**Ch34** covers production ops — monitoring, rollback, and running the loop safely over many
+rounds. Everything in this chapter's "honest open problems" section gets a real chapter there.
+
+Alongside all of this, the appendices are your reference layer: **Appendix A** (Glossary) has
+a plain-English definition of every term in the book; **Appendix B** (Project Layout and
+Command Cheat-Sheet) collects every command into one page; **Appendix C** (Troubleshooting
+Common Errors) is the first place to look when something breaks; and **Appendix D** (Cost,
+Time, and a Go-Live Checklist) gives you the numbers and the checklist for going to production.
+
+Turn the page to Ch24: the move from imitation to preference.
